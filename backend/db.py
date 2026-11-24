@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 def resolve_database_url(configured: str | None, *, app_env: str | None = None, is_render: bool | None = None) -> str:
@@ -13,6 +14,13 @@ def resolve_database_url(configured: str | None, *, app_env: str | None = None, 
     url = (configured or "sqlite:///../data/godseye.db").strip()
     if production and url.lower().startswith("sqlite"):
         raise RuntimeError("Production requires a persistent PostgreSQL DATABASE_URL; SQLite on Render is ephemeral and is disabled.")
+    if production:
+        try:
+            parsed = make_url(url)
+        except Exception as exc:
+            raise RuntimeError("Production DATABASE_URL must be a valid Supabase Session Pooler PostgreSQL URL.") from exc
+        if parsed.get_backend_name() not in {"postgres", "postgresql"} or not (parsed.host or "").endswith(".pooler.supabase.com") or parsed.port != 5432:
+            raise RuntimeError("Production DATABASE_URL must use the Supabase Session Pooler host on port 5432 (not a direct or transaction-pooler URL).")
     if url.startswith("postgres://"):
         url = "postgresql+psycopg://" + url[len("postgres://"):]
     elif url.startswith("postgresql://"):

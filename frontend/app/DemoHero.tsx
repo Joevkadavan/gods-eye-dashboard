@@ -1,4 +1,5 @@
 'use client';
+import {adminFetch} from './adminFetch';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Activity,Camera,Expand,LoaderCircle,Pause,Play,Volume2,VolumeX} from 'lucide-react';
 import EyeLogo from './EyeLogo';
@@ -38,7 +39,7 @@ export default function DemoHero({camera,onOpenStation}:{camera:HeroCamera|null;
  },[camera?.id]);
  const runWorkerAction=useCallback(async(action:'play'|'pause'|'replay')=>{
   if(!camera)return;
-  try{const r=await fetch(`/api/cameras/${encodeURIComponent(camera.id)}/playback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});if(!r.ok)throw new Error((await r.json()).detail||`Playback ${action} failed`);setControlNote('')}
+  try{const r=await adminFetch(`/api/cameras/${encodeURIComponent(camera.id)}/playback`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});if(!r.ok)throw new Error((await r.json()).detail||`Playback ${action} failed`);setControlNote('')}
   catch(e){setControlNote(e instanceof Error?e.message:'Playback controls unavailable')}
  },[camera?.id]);
  const togglePlay=async()=>{const media=video.current;if(!media)return;if(media.paused){try{await media.play();setPlaying(true);void runWorkerAction('play')}catch{setMediaError('Tap play to start this video')}}else{media.pause();setPlaying(false);void runWorkerAction('pause')}};

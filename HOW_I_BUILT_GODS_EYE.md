@@ -121,9 +121,9 @@ KPI cards use `/api/overview`, current worker metrics and runtime system informa
 The project includes pytest tests for inference/tracking behavior, camera lifecycle and API functions, event history, map GeoJSON integrity and video route restrictions. For this delivery pass:
 
 - `cd frontend && npm run build` completed successfully on the current source state.
-- `cd backend && pytest -q` passed **29 tests**, including Render/Supabase URL configuration and empty-inference safeguards.
+- `cd backend && pytest -q` passed **34 tests**, including Session pooler validation, API-only imports without CV libraries, write-route bearer protection, CORS validation and no-inference safeguards.
 - A production-build Chromium smoke test visited `/`, `/operations`, and `/chennai`; all returned successfully with no page errors or hydration console errors. At 390 px, both dashboard and Chennai pages had no horizontal overflow. The dashboard video element loaded, the Chennai page rendered two source cards, and the production API smoke returned HTTP 200 for `/health`, `/api/overview`, and `/api/india-feeds` in local configuration.
-- No Render/Supabase production service is connected yet; the app was not tested against a live hosted database.
+- No Render service or Supabase project/database exists yet; the app has not been tested against a live hosted database.
 
 For future changes, run `npm ci`, `npm run build`, then `python3 -m pytest -q backend/tests`. Smoke-test `/`, `/api/overview`, `/data/india_admin1.geojson` and the map-style/MP4 requests from a browser with an approved backend URL.
 
@@ -146,28 +146,19 @@ git push -u origin main
 
 If a remote already has commits, clone that remote and copy the final source into it, then commit and push normally; do not force-push or synthesize earlier commits. For subsequent updates use `git add`, `git commit -m "Describe the change"` and `git push`. The repo URL is [Joevkadavan/gods-eye-dashboard](https://github.com/Joevkadavan/gods-eye-dashboard).
 
-## STEP 13 – Vercel Deployment
+## STEP 13 – Vercel and Render Deployment (manual steps pending)
 
-A new Vercel project named `gods-eye-dashboard` has been created in the connected account with Next.js, `frontend` as its root directory, `npm ci` as its install command and `npm run build` as its build command. It is still unconnected to source and has no deployment. The existing `bealwaysjoe` project is unrelated and must remain untouched. The preferred `https://gods-eye-dashboard.vercel.app` currently serves an unrelated “God's Eye | Cyber Chief” app; do not overwrite it. `https://godseye-dashboard-joevkadavan.vercel.app` returned Vercel `DEPLOYMENT_NOT_FOUND` when checked but is not reserved. The new project's account-level SSO protection is enabled, so public deployment access and domain assignment must be verified/configured before claiming a public launch.
+Vercel has a `gods-eye-dashboard` project configured with the Next.js app rooted at `frontend`, but it is not connected to a repository and has no deployment. The current Vercel project domain listing returns `gods-eye-dashboard-tau.vercel.app`; use `https://gods-eye-dashboard-tau.vercel.app` as the current CORS origin and re-check after deployment. Do not use `gods-eye-dashboard.vercel.app`, which serves unrelated content, and do not alter the unrelated `bealwaysjoe` project. The project currently has SSO protection for non-custom-domain deployments; verify public-access policy before announcing a public site.
 
-Once the repository and persistent API host are authorized:
+The exact frontend backend target variable is server-side `API_URL`, which `frontend/next.config.mjs` reads for same-origin `/api/*` rewrites. After a Render service is created, enter its actual HTTPS origin in Vercel Production `API_URL` and redeploy. The origin cannot be supplied until Render assigns it.
 
-1. In Vercel, import `https://github.com/Joevkadavan/gods-eye-dashboard` and enable the GitHub integration.
-2. Set the project **Root Directory** to `frontend` (the Next.js app). `frontend/vercel.json` sets the Next.js framework, `npm ci` install command and `npm run build`; keep Next.js's default `.next` output handling.
-3. Configure the production and preview environment variable `API_URL` to the origin of the separately deployed, public-reachable FastAPI backend. Do not use `localhost`, `127.0.0.1` or a private internal container hostname. Do not add secrets to client-visible `NEXT_PUBLIC_*` values.
-4. Deploy a preview first and verify the dashboard, `/api/overview` rewrite, analytics/event APIs, camera viewer and static boundary GeoJSON. Then promote/merge the correct commit to `main` and verify the production deployment.
-5. Leave Git-based automatic production deployment enabled for `main`; non-main branches should be preview deployments. Use Vercel's deployment history for rollback.
-6. Add a project domain only after Vercel confirms it is available. Record the actual live URL in `PROJECT_OVERVIEW.md` and here after it is verified.
+The root `render.yaml` configures Render Free with `rootDir: backend`, build command `pip install -r requirements-api.txt`, start command `uvicorn main:app --host 0.0.0.0 --port $PORT`, and `/health`. The lean API requirements intentionally omit OpenCV, NumPy, ONNX Runtime and scikit-learn. The existing vision stack remains available via the full `backend/requirements.txt` for local or separately provisioned inference. The Render environment asks for `DATABASE_URL` and `ADMIN_API_TOKEN` as unsynced secrets; the Blueprint sets `FRONTEND_ORIGINS` to the current exact Vercel project origin.
 
-Vercel production URL: **pending**. The public site requires the external FastAPI backend to be available; the Next.js deployment alone cannot run persistent OpenCV/ONNX camera workers.
+Create the Supabase Free PostgreSQL project manually and use its Session pooler URI (host under `.pooler.supabase.com`, port 5432, database `postgres`) only as Render's secret `DATABASE_URL`. Production requires TLS, rejects SQLite and enforces the Session pooler host/port. SQLAlchemy models persist camera registry, event and metric rows. The service turns video inference, local uploads and local evidence writes off. A 30-day retention policy applies to event and metric rows.
 
-### Free FastAPI host and database configuration
+Production requires an `ADMIN_API_TOKEN` random secret of at least 32 characters. All HTTP write endpoints reject requests without its bearer token. The web UI prompts the operator for this shared token at first write and stores it only in that tab's session storage; it is not embedded in frontend code. This is shared-secret access, not per-user identity or audit history.
 
-The repository-root `render.yaml` defines a Render **Free** Python web service with `rootDir: backend`, `pip install -r requirements.txt`, `uvicorn main:app --host 0.0.0.0 --port $PORT`, and `/health`. The real FastAPI entry point is `backend/main.py` (`main:app` when Render's root is `backend`). Render also needs `DATABASE_URL` and `FRONTEND_ORIGINS` entered as environment variables at Blueprint creation; the YAML contains only `sync: false` placeholders.
-
-Create a Supabase Free PostgreSQL project and copy the dashboard's **Session pooler** URI (port 5432; use TLS with `sslmode=require`). Store the full URL only in Render's secret environment variable `DATABASE_URL`; the app normalizes `postgresql://` to SQLAlchemy's installed psycopg v3 driver. Production mode rejects SQLite and will not silently fall back to an ephemeral DB. `FRONTEND_ORIGINS` must list the exact HTTPS Vercel origin, comma-separated if needed; production rejects wildcard or local-only CORS. After Render assigns an `https://<service>.onrender.com` URL, set Vercel's server-side `API_URL` to that exact origin.
-
-For the Render Free profile, `ENABLE_VIDEO_ANALYTICS=false`, `STARTUP_CAMERAS=0`, local uploads off and local evidence-image writes off. This keeps the full local OpenCV/YOLO implementation intact but does **not** promise continuous inference on the free service; the web service is small (0.1 CPU/512 MB), may sleep after inactivity, and has ephemeral local disk. Fresh people/vehicle/FPS values remain unavailable unless actual inference is enabled and returns current frames. Supabase stores relational camera/event/metric rows; app retention is configured to 30 days. Evidence files and uploaded video files are not retained on the free service. Supabase Free projects may pause during low database activity. No Render service or Supabase project has been created in this session: Arena reports Render unsupported and Supabase disconnected, and no GitHub repo access is available to connect the Blueprint.
+Render Free's 0.1 CPU / 512 MB service is not suitable for continuous multi-camera ONNX inference. The hosted process is API + PostgreSQL only; real analytics require a separate appropriately sized CPU/GPU worker, authorized sources, and durable object storage if evidence files must persist. The API returns no synthetic counts or FPS while inference is disabled. Render Free also sleeps and has ephemeral storage. No Render URL exists yet. No Supabase project was found in the connected account listing; no Render service was created; no GitHub remote is configured or pushed. The live deployment procedure, environment names and acceptance checks are documented in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## STEP 14 – Running the Project Locally
 

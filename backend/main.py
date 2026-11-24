@@ -1,23 +1,21 @@
 """GOD'S EYE local-first API and independent asynchronous camera workers."""
 from __future__ import annotations
-import asyncio, base64, json, logging, os, shutil, time, uuid, urllib.request, urllib.error
+import asyncio, base64, json, logging, os, secrets, shutil, time, uuid, urllib.request, urllib.error
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent/".env")
 
-import cv2
-import numpy as np
 import psutil
-from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select, inspect, text
 
-from cv_engine import YoloDetector, CameraState, draw_overlay, VEHICLE_IDS
 from db import Base, Camera, CameraMetric, Event, SessionLocal, engine
 
 ROOT=Path(__file__).resolve().parent.parent
@@ -36,6 +34,17 @@ def env_flag(name:str,default:bool)->bool:
 VIDEO_ANALYTICS_ENABLED=env_flag("ENABLE_VIDEO_ANALYTICS",True)
 LOCAL_UPLOADS_ENABLED=env_flag("ENABLE_LOCAL_UPLOADS",True)
 LOCAL_EVIDENCE_ENABLED=env_flag("STORE_LOCAL_EVIDENCE",True)
+try:
+    import cv2
+    import numpy as np
+    from cv_engine import YoloDetector, CameraState, draw_overlay, VEHICLE_IDS
+except ImportError as exc:
+    if VIDEO_ANALYTICS_ENABLED:
+        raise RuntimeError("Video analytics dependencies are missing; install backend/requirements.txt or disable ENABLE_VIDEO_ANALYTICS for API-only hosting.") from exc
+    cv2=None  # type: ignore[assignment]
+    np=None  # type: ignore[assignment]
+    YoloDetector=CameraState=draw_overlay=None  # type: ignore[assignment]
+    VEHICLE_IDS=set()
 RUNTIME_SETTINGS={"inference_size":INFER_SIZE,"confidence_threshold":CONF,"retention_hours":RETENTION_HOURS,"max_cameras":MAX_CAMERAS,"crowd_warning_count":CROWD_WARNING_COUNT,"stationary_seconds":STATIONARY_SECONDS,"model":MODEL.name}
 INDIAN_DEMO_ID="indian-urban-traffic-demo"
 INDIAN_DEMO_FILE=MEDIA/"indian-urban-traffic-pexels-5009674.mp4"
@@ -394,8 +403,27 @@ def parse_frontend_origins(raw:str|None=None)->list[str]:
     return [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
 
 FRONTEND_ORIGINS=parse_frontend_origins()
-if IS_PRODUCTION and (not FRONTEND_ORIGINS or "*" in FRONTEND_ORIGINS or all(origin.startswith(("http://localhost","http://127.0.0.1")) for origin in FRONTEND_ORIGINS)):
-    raise RuntimeError("Set FRONTEND_ORIGINS to the exact HTTPS Vercel production origin(s); wildcard and local-only CORS are forbidden in production.")
+def is_exact_https_origin(origin:str)->bool:
+    try:
+        parsed=urlsplit(origin)
+        return parsed.scheme=="https" and bool(parsed.netloc) and parsed.username is None and parsed.password is None and parsed.path in {"","/"} and not parsed.query and not parsed.fragment
+    except ValueError:
+        return False
+if IS_PRODUCTION and (not FRONTEND_ORIGINS or "*" in FRONTEND_ORIGINS or any(not is_exact_https_origin(origin) for origin in FRONTEND_ORIGINS)):
+    raise RuntimeError("Set FRONTEND_ORIGINS to exact HTTPS Vercel origins only; wildcard, paths and non-HTTPS origins are forbidden in production.")
+ADMIN_API_TOKEN=os.getenv("ADMIN_API_TOKEN", "")
+if IS_PRODUCTION and len(ADMIN_API_TOKEN) < 32:
+    raise RuntimeError("Set ADMIN_API_TOKEN to a random secret of at least 32 characters in the hosting environment.")
+def require_admin(authorization:str|None=Header(default=None)):
+    """Require a deployment-managed bearer secret for every operator write."""
+    if not IS_PRODUCTION and not ADMIN_API_TOKEN:
+        return True  # local development only; production refuses to start without the token
+    scheme, _, supplied = authorization.partition(" ") if authorization else ("", "", "")
+    if scheme.lower() != "bearer":
+        supplied=""
+    if not ADMIN_API_TOKEN or not secrets.compare_digest(supplied, ADMIN_API_TOKEN):
+        raise HTTPException(status_code=401,detail="Administrator bearer token required or invalid",headers={"WWW-Authenticate":"Bearer"})
+    return True
 app.add_middleware(CORSMiddleware,allow_origins=FRONTEND_ORIGINS,allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","X-Requested-With"])
 
 @app.get("/health")
@@ -456,7 +484,7 @@ def india_feeds():
     db=SessionLocal(); out=[serialize_camera(c) for c in db.scalars(select(Camera).where(Camera.country=="India").order_by(Camera.city,Camera.name))]; db.close(); return out
 
 @app.post("/api/cameras")
-async def add_camera(body:CameraIn):
+async def add_camera(body:CameraIn, _admin:bool=Depends(require_admin)):
     if not VIDEO_ANALYTICS_ENABLED:
         raise HTTPException(503,"Video ingestion is disabled on this free-tier deployment; no inference metrics are being generated.")
     if body.source_type not in {"file","webcam","rtsp"}: raise HTTPException(400,"source_type must be file, webcam or rtsp; verified image-refresh sources are managed by the registry")
@@ -479,7 +507,7 @@ async def add_camera(body:CameraIn):
     return result
 
 @app.post("/api/cameras/upload")
-async def upload_video(file:UploadFile=File(...),name:str="Uploaded video"):
+async def upload_video(file:UploadFile=File(...),name:str="Uploaded video", _admin:bool=Depends(require_admin)):
     if not LOCAL_UPLOADS_ENABLED or not VIDEO_ANALYTICS_ENABLED:
         raise HTTPException(503,"Local video uploads are disabled on this free-tier deployment because instance storage is ephemeral.")
     if Path(file.filename or "").suffix.lower() not in {".mp4",".avi",".mov",".mkv"}: raise HTTPException(400,"Supported video formats: mp4, avi, mov, mkv")
@@ -488,7 +516,7 @@ async def upload_video(file:UploadFile=File(...),name:str="Uploaded video"):
     return await add_camera(CameraIn(name=name,source=str(target),source_type="file"))
 
 @app.patch("/api/cameras/{camera_id}")
-async def patch_camera(camera_id:str,body:CameraPatch):
+async def patch_camera(camera_id:str,body:CameraPatch, _admin:bool=Depends(require_admin)):
     db=SessionLocal(); c=db.get(Camera,camera_id)
     if not c: db.close(); raise HTTPException(404,"Camera not found")
     if body.name is not None: c.name=body.name
@@ -499,7 +527,7 @@ async def patch_camera(camera_id:str,body:CameraPatch):
     return result
 
 @app.delete("/api/cameras/{camera_id}")
-async def delete_camera(camera_id:str):
+async def delete_camera(camera_id:str, _admin:bool=Depends(require_admin)):
     if camera_id in tasks: tasks[camera_id].cancel(); await asyncio.sleep(0)
     db=SessionLocal(); c=db.get(Camera,camera_id)
     if not c: db.close(); raise HTTPException(404,"Camera not found")
@@ -517,7 +545,7 @@ def list_events(severity:str|None=None,category:str|None=None,status:str|None=No
     out=[serialize_event(e) for e in db.scalars(q)]; db.close(); return out
 
 @app.patch("/api/events/{event_id}/verify")
-def verify_event(event_id:str,body:VerifyIn):
+def verify_event(event_id:str,body:VerifyIn, _admin:bool=Depends(require_admin)):
     if body.status not in {"ACKNOWLEDGED","VERIFIED","DISMISSED"}: raise HTTPException(400,"status must be ACKNOWLEDGED, VERIFIED or DISMISSED")
     db=SessionLocal(); e=db.get(Event,event_id)
     if not e: db.close(); raise HTTPException(404,"Event not found")
@@ -571,7 +599,7 @@ class PlaybackIn(BaseModel):
     action:str
 
 @app.post("/api/cameras/{camera_id}/playback")
-def control_playback(camera_id:str,body:PlaybackIn):
+def control_playback(camera_id:str,body:PlaybackIn, _admin:bool=Depends(require_admin)):
     if body.action not in {"play","pause","replay"}:raise HTTPException(400,"action must be play, pause or replay")
     db=SessionLocal();camera=db.get(Camera,camera_id);db.close()
     if not camera:raise HTTPException(404,"Camera not found")
@@ -623,7 +651,7 @@ async def websocket(ws:WebSocket):
 def settings(): return {**RUNTIME_SETTINGS,"model":MODEL.name,"privacy":"No face recognition, biometric inference or identity tracking; temporary camera-local track IDs.","human_verification_required":True,"external_authorities_auto_contact":False}
 
 @app.put("/api/settings")
-async def update_settings(body:SettingsIn):
+async def update_settings(body:SettingsIn, _admin:bool=Depends(require_admin)):
     if IS_PRODUCTION:
         raise HTTPException(503,"Production configuration is environment-managed; local settings files are not persisted. Update Render environment variables and redeploy.")
     if not VIDEO_ANALYTICS_ENABLED:
