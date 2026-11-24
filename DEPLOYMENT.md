@@ -79,7 +79,7 @@ With inference off, people counts, vehicle counts and inference FPS remain unava
 
 ## Deployment acceptance checklist
 
-- [ ] Source is connected to the intended GitHub repository; history is preserved; no secrets/local DB files were pushed.
+- [x] Source is published to the intended public GitHub repository; seven-commit history is preserved; no credential files or local database files were pushed.
 - [ ] Supabase Free project exists; its Session pooler URL is entered only in Render.
 - [ ] Render Free service deployed from `render.yaml`; `DATABASE_URL` and a random `ADMIN_API_TOKEN` are set as environment secrets.
 - [ ] `/health`, `/api/overview`, and `/api/india-feeds` pass against the deployed service.

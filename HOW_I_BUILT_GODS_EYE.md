@@ -129,22 +129,9 @@ For future changes, run `npm ci`, `npm run build`, then `python3 -m pytest -q ba
 
 ## STEP 12 – GitHub Version Control
 
-The requested URL `https://github.com/Joevkadavan/gods-eye-dashboard` returned HTTP 404 to an unauthenticated GitHub API lookup. That may mean it does not exist or that it is private; a private repository cannot be ruled out without authentication. The workspace has a local `main` branch with six truthful commits, including the original history, final dashboard update, launch record and Render/Supabase preparation; these commits must be preserved. No Git remote or GitHub CLI is configured, and the GitHub connector is not available in this session, so no remote repository has been created or overwritten and no push is claimed. An authenticated GitHub connection is required before verifying a private repository, creating it if absent, or pushing source.
+The public repository [Joevkadavan/gods-eye-dashboard](https://github.com/Joevkadavan/gods-eye-dashboard) is now published. After GitHub device-flow authentication as `Joevkadavan`, the requested repository path was not found in the account, and the authenticated repository listing showed no repository with that name. An empty public repository was therefore created at the exact requested URL; the existing local `main` branch was pushed without force. Its seven-commit history, including commit `7aedba0` (`Prepare secured API-only free-tier deployment`), remains intact. The remote `main` head matched local `main` after the push.
 
-After authenticating GitHub with an approved mechanism, first verify the repository in the account. The GitHub web interface can create a public repository at `https://github.com/new` with the name `gods-eye-dashboard`. If GitHub CLI is installed and authenticated, check first with `gh repo view Joevkadavan/gods-eye-dashboard`. If absent, an empty repository can be created and published with `gh repo create Joevkadavan/gods-eye-dashboard --public --source . --remote origin --push` after the local source has a real commit. If present, clone/fetch it first and preserve its history. Then, from the project root:
-
-```bash
-# If starting from the empty remote, initialize once:
-git init -b main
-git add .
-git status                 # inspect staged files; verify no .env/database/cache
-# Use the authenticated developer identity configured on your machine:
-git commit -m "Prepare GOD'S EYE dashboard source and launch documentation"
-git remote add origin https://github.com/Joevkadavan/gods-eye-dashboard.git
-git push -u origin main
-```
-
-If a remote already has commits, clone that remote and copy the final source into it, then commit and push normally; do not force-push or synthesize earlier commits. For subsequent updates use `git add`, `git commit -m "Describe the change"` and `git push`. The repo URL is [Joevkadavan/gods-eye-dashboard](https://github.com/Joevkadavan/gods-eye-dashboard).
+Anonymous GitHub API checks returned HTTP 200 for the repository, `README.md`, `PROJECT_OVERVIEW.md`, `HOW_I_BUILT_GODS_EYE.md`, `DEPLOYMENT.md`, `backend/main.py`, and `render.yaml`. A scan of all seven original local commits found no private-key blocks, common GitHub/AWS tokens, or non-placeholder secret assignments. `.env.example` templates are the only tracked paths matching the environment-file pattern; no real environment files, credentials, local databases, build outputs, or dependency caches were published. The GitHub CLI credential was removed from the workspace after verification. A follow-up documentation-only commit updates the project status to reflect this publication; it is appended normally, preserving the original seven commits without rewriting history.
 
 ## STEP 13 – Vercel and Render Deployment (manual steps pending)
 
