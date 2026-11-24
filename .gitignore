@@ -1,0 +1,35 @@
+# Secrets, local settings, and deployment credentials
+.env*
+!.env.example
+backend/.env*
+!backend/.env.example
+frontend/.env*
+!frontend/.env.example
+.vercel/
+*.pem
+*.key
+
+# Build outputs / local caches
+node_modules/
+frontend/.next/
+frontend/out/
+coverage/
+*.log
+.DS_Store
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+# Node
+frontend/node_modules/
+frontend/.next/
+# Data generated at runtime (demo video assets stay tracked)
+data/*.db
+data/*.db-*
+data/uploads/
+data/evidence/
+data/settings.json
+# IDE
+.vscode/
+.idea/

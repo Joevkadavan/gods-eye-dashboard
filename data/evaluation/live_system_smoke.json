@@ -1,0 +1,152 @@
+{
+  "summary": {
+    "seconds_requested": 15,
+    "samples": 15,
+    "active_camera_counts": [
+      2
+    ],
+    "aggregate_fps_mean": 33.55,
+    "aggregate_fps_min": 32.1,
+    "aggregate_fps_max": 35.7,
+    "cpu_percent_mean": 90.2,
+    "rss_mb_max": 220.5,
+    "notes": "System CPU percentage is reported by psutil; GPU unavailable. Counts are per latest sampled frames, not ground-truth accuracy."
+  },
+  "samples": [
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 32.6,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 0.0,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 34.1,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 95.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 34.0,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 96.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 33.7,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 96.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 35.0,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 95.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 34.4,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 95.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 32.3,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 97.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 33.8,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 96.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 32.4,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 97.0,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 33.7,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 97.0,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 33.0,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 98.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 32.1,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 98.5,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 33.8,
+      "people": 1,
+      "vehicles": 0,
+      "cpu": 96.1,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 35.7,
+      "people": 0,
+      "vehicles": 0,
+      "cpu": 95.0,
+      "rss_mb": 220.5
+    },
+    {
+      "active_cameras": 2,
+      "total_cameras": 4,
+      "fps": 32.6,
+      "people": 0,
+      "vehicles": 0,
+      "cpu": 98.0,
+      "rss_mb": 220.5
+    }
+  ]
+}

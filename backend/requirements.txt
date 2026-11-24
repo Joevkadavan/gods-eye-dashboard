@@ -1,0 +1,16 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+python-multipart>=0.0.9
+opencv-python-headless>=4.10
+onnxruntime>=1.20
+numpy>=2.0,<3
+scikit-learn>=1.5
+pydantic>=2.8
+psutil>=6.0
+python-dotenv>=1.0
+# Build-time only (model export; not needed by the running API):
+# torch==2.9.1+cpu
+# ultralytics==8.3.78
+# onnxscript
