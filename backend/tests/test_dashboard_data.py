@@ -50,3 +50,23 @@ def test_analytics_preserves_event_rows_and_adds_actual_bucket_field(monkeypatch
         {"timestamp": second.timestamp.isoformat(), "category": second.category, "severity": second.severity},
     ]
     assert result["event_frequency_buckets"] == [{"timestamp": "2026-11-24T09:00:00+00:00", "count": 2}]
+
+
+def test_analytics_normalizes_naive_retained_metric_timestamps_to_utc(monkeypatch):
+    from unittest.mock import MagicMock
+    sample = SimpleNamespace(
+        timestamp=datetime(2026, 11, 24, 9, 10), camera_id="cam-1",
+        people_count=2, vehicle_count=3, crowd_density=4.5,
+        fps=12.0, traffic_per_minute=7,
+    )
+    db = MagicMock()
+    db.scalars.side_effect = [[], [sample]]
+    monkeypatch.setattr(main, "SessionLocal", lambda: db)
+    monkeypatch.setattr(main.hub, "latest", {})
+    result = main.analytics()
+    assert result["density_trend"] == [{
+        "timestamp": "2026-11-24T09:10:00+00:00", "camera_id": "cam-1",
+        "people_count": 2, "vehicle_count": 3,
+        "crowd_density_per_megapixel": 4.5, "fps": 12.0,
+        "vehicles_per_minute": 7,
+    }]

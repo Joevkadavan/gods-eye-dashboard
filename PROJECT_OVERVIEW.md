@@ -6,16 +6,17 @@ I started GOD'S EYE with a vision of exploring how artificial intelligence, comp
 
 ## B. What Is GOD'S EYE?
 
-GOD'S EYE is an AI-assisted public safety intelligence and situational-awareness dashboard prototype. It combines a processed prerecorded traffic demonstration, a registry of verified camera sources, computer-vision metrics, map context and reviewable events. It is a software prototype—not a certified emergency-response or live city-surveillance system.
+GOD'S EYE is an AI-assisted public safety intelligence and situational-awareness dashboard prototype. The video-first dashboard is the landing page at `/`, with Chennai source availability available separately at `/chennai`. It combines a processed traffic-video demonstration, camera-source information, computer-vision metrics, map context and reviewable events. It is a software prototype—not a certified emergency-response or live city-surveillance system.
 
 ## C. Key Features
 
 - **Indian traffic video hero:** a seekable, looping Pexels traffic video clearly labelled prerecorded and not live CCTV. The city is not verified.
 - **AI video intelligence:** CPU-based YOLOv8n/ONNX inference for people and selected vehicle classes, with confidence, bounding boxes, camera-local temporary tracking IDs, counts and inference timing.
+- **Traffic Flow & Congestion Intelligence:** the Overview replaces Recent Events with per-video-camera detections, tracked-flow state, frame-occupancy density bands, 5/15/30-minute vehicle-count trends from timestamped persisted analytics, camera comparisons and data-grounded observations. Density is a visual box-coverage proxy—not calibrated road capacity; prerecorded feeds are labelled as demonstrations. Charts remain empty until sufficient real samples exist.
 - **Animated eye branding:** a lightweight SVG/CSS eye mark, with subtle motion and reduced-motion support.
 - **Camera registry and viewer:** source metadata, availability checks, provider links, periodic image refreshes and an existing fullscreen station viewer. The Chennai registry entries are periodic still-image sources; they are not continuous video or YOLO-processed.
 - **Interactive India map:** MapLibre GL JS, OpenStreetMap-derived vector tiles, state/UT reference boundaries, city navigation, map controls, selectable camera markers and optional mapped-building extrusions.
-- **Alerts requiring review and Recent Events:** stored events are presented for human acknowledgement, verification or dismissal.
+- **Alerts requiring review and incident register:** actionable stored alerts remain available for human acknowledgement, verification or dismissal. The Overview's former Recent Events panel is replaced by traffic intelligence; the separate Incidents register is retained.
 - **Activity analytics, responsive navigation and system monitoring:** retained metric charts, CPU/runtime telemetry and layouts for desktop and mobile.
 
 Counts and event cues are model outputs and prototype heuristics, not ground-truth measurements. Alerts are not judgments of identity, intent or dangerousness.
@@ -26,7 +27,7 @@ The frontend is Next.js 15 with React 19, TypeScript, MapLibre GL JS and Rechart
 
 ## E. Public Accessibility
 
-The site is intended to be viewable in a normal browser without installing the development environment. **A GOD'S EYE production URL is not available yet.** The preferred `https://gods-eye-dashboard.vercel.app` currently serves an unrelated “God's Eye | Cyber Chief” application, so it must not be advertised or overwritten. The connected Vercel account has no matching GOD'S EYE project. A production URL can be added here after the correct project, repository and backend endpoint are connected and deployment is verified.
+The site is intended to be viewable in a normal browser without installing the development environment. **A GOD'S EYE production URL is not available yet.** The preferred `https://gods-eye-dashboard.vercel.app` currently serves an unrelated “God's Eye | Cyber Chief” application, so it must not be advertised or overwritten. A separate Vercel project named `gods-eye-dashboard` has now been created with the frontend root directory and Next.js build settings, but it has no source connection or deployment yet. A production URL can be added here after the GitHub repository and backend endpoint are connected and the deployment is verified.
 
 When deployed, the public frontend can display the dashboard and prerecorded demo. The API-dependent camera registry, analytics and events require `API_URL` to point to an available FastAPI deployment. Map tiles come from OpenFreeMap's public service and therefore depend on that external service's availability; the local boundary GeoJSON is bundled with the app. This prototype has no authentication or role-based access control; it should not be exposed as an unrestricted operational safety service.
 

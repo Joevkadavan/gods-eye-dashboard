@@ -338,11 +338,11 @@ async def lifespan(app:FastAPI):
     demo=db.get(Camera,INDIAN_DEMO_ID)
     if INDIAN_DEMO_FILE.exists():
         if demo is None:
-            demo=Camera(id=INDIAN_DEMO_ID,name="GOD'S EYE – Indian Urban Traffic Demo",source=str(INDIAN_DEMO_FILE.resolve()),source_type="file",enabled=True,status="offline")
+            demo=Camera(id=INDIAN_DEMO_ID,name="GOD'S EYE – Indian Urban Traffic",source=str(INDIAN_DEMO_FILE.resolve()),source_type="file",enabled=True,status="offline")
             db.add(demo)
-        demo.name="GOD'S EYE – Indian Urban Traffic Demo";demo.source=str(INDIAN_DEMO_FILE.resolve());demo.source_type="file";demo.feed_kind="demo"
+        demo.name="GOD'S EYE – Indian Urban Traffic";demo.source=str(INDIAN_DEMO_FILE.resolve());demo.source_type="file";demo.feed_kind="demo"
         demo.city=None;demo.state=None;demo.country="India";demo.latitude=None;demo.longitude=None
-        demo.attribution=INDIAN_DEMO_ATTRIBUTION;demo.health_message="Prerecorded Pexels India traffic video; city not verified. DEMO, not live CCTV."
+        demo.attribution=INDIAN_DEMO_ATTRIBUTION;demo.health_message="Pexels India traffic video; city unverified. Not a live CCTV feed."
         for prior_event in demo.events:
             if prior_event.category=="CAMERA_ONLINE":
                 prior_event.category="DEMO_PLAYBACK_STARTED"
@@ -378,7 +378,13 @@ def health():
     metadata=detector.session.get_modelmeta().custom_metadata_map if detector else {}
     providers=detector.session.get_providers() if detector else []
     device="CUDA / GPU" if any("CUDA" in p or "Tensorrt" in p for p in providers) else "CPU" if "CPUExecutionProvider" in providers else "Unknown"
-    return {"status":"ok","model":MODEL.name,"model_version":metadata.get("version"),"model_architecture":metadata.get("description"),"model_metadata_date":metadata.get("date"),"model_status":"LOADED" if detector else "ERROR","input_resolution":INFER_SIZE,"runtime":"onnxruntime","active_workers":sum(not t.done() for t in tasks.values()),"providers":providers,"device":device,"cpu_provider":"CPUExecutionProvider" if "CPUExecutionProvider" in providers else None,"cpu_utilization_percent":psutil.cpu_percent(interval=None),"process_memory_mb":round(proc.memory_info().rss/1024**2,1),"system_memory_percent":vm.percent,"gpu_utilization_percent":None}
+    now=datetime.now(timezone.utc)
+    fresh={cid:payload for cid,payload in hub.latest.items() if payload.get("timestamp") and -60<=(now-datetime.fromisoformat(payload["timestamp"].replace("Z","+00:00"))).total_seconds()<=30}
+    db=SessionLocal()
+    enabled_video_ids=set(db.scalars(select(Camera.id).where(Camera.enabled==True,Camera.feed_kind!="image_refresh")))
+    db.close()
+    processing_ids=sorted(enabled_video_ids.intersection(fresh))
+    return {"status":"ok","model":MODEL.name,"model_version":metadata.get("version"),"model_architecture":metadata.get("description"),"model_metadata_date":metadata.get("date"),"model_status":"LOADED" if detector else "ERROR","inference_status":"PROCESSING" if processing_ids else "WAITING","processing_cameras":processing_ids,"active_video_workers":sum(cid in tasks and not tasks[cid].done() for cid in enabled_video_ids),"input_resolution":INFER_SIZE,"runtime":"onnxruntime","active_workers":sum(not t.done() for t in tasks.values()),"providers":providers,"device":device,"cpu_provider":"CPUExecutionProvider" if "CPUExecutionProvider" in providers else None,"cpu_utilization_percent":psutil.cpu_percent(interval=None),"process_memory_mb":round(proc.memory_info().rss/1024**2,1),"system_memory_percent":vm.percent,"gpu_utilization_percent":None}
 
 def is_review_alert(event:Any)->bool:
     """Pending, actionable safety cue; source lifecycle and demo events are not alerts."""
@@ -478,7 +484,7 @@ def verify_event(event_id:str,body:VerifyIn):
 
 @app.get("/api/analytics")
 def analytics():
-    db=SessionLocal(); events=list(db.scalars(select(Event).order_by(desc(Event.timestamp)).limit(1000))); samples=list(db.scalars(select(CameraMetric).order_by(desc(CameraMetric.timestamp)).limit(3000))); db.close()
+    db=SessionLocal(); events=list(db.scalars(select(Event).where(Event.category!="DEMO_PLAYBACK_STARTED").order_by(desc(Event.timestamp)).limit(1000))); samples=list(db.scalars(select(CameraMetric).order_by(desc(CameraMetric.timestamp)).limit(3000))); db.close()
     distribution={}
     for e in events: distribution[e.category]=distribution.get(e.category,0)+1
     vehicle_classes={}
@@ -487,7 +493,7 @@ def analytics():
             if d.get("class_id") in VEHICLE_IDS:
                 label=d.get("label","vehicle"); vehicle_classes[label]=vehicle_classes.get(label,0)+1
     event_frequency=hourly_event_frequency(events)
-    return {"event_distribution":distribution,"vehicle_class_distribution":vehicle_classes,"event_frequency":[{"timestamp":e.timestamp.isoformat(),"category":e.category,"severity":e.severity} for e in reversed(events)],"event_frequency_buckets":event_frequency,"camera_metrics":hub.latest,"density_trend":[{"timestamp":m.timestamp.isoformat(),"camera_id":m.camera_id,"people_count":m.people_count,"vehicle_count":m.vehicle_count,"crowd_density_per_megapixel":m.crowd_density,"fps":m.fps,"vehicles_per_minute":m.traffic_per_minute} for m in reversed(samples)],"traffic":[{"camera_id":cid,"vehicles_per_minute":x.get("metrics",{}).get("vehicles_per_minute",0)} for cid,x in hub.latest.items()]}
+    return {"event_distribution":distribution,"vehicle_class_distribution":vehicle_classes,"event_frequency":[{"timestamp":e.timestamp.isoformat(),"category":e.category,"severity":e.severity} for e in reversed(events)],"event_frequency_buckets":event_frequency,"camera_metrics":hub.latest,"density_trend":[{"timestamp":iso_utc(m.timestamp),"camera_id":m.camera_id,"people_count":m.people_count,"vehicle_count":m.vehicle_count,"crowd_density_per_megapixel":m.crowd_density,"fps":m.fps,"vehicles_per_minute":m.traffic_per_minute} for m in reversed(samples)],"traffic":[{"camera_id":cid,"vehicles_per_minute":x.get("metrics",{}).get("vehicles_per_minute",0)} for cid,x in hub.latest.items()]}
 
 @app.get("/api/cameras/{camera_id}/video")
 def prerecorded_video(camera_id:str):

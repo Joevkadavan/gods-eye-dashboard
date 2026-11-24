@@ -19,6 +19,10 @@ import onnxruntime as ort
 log = logging.getLogger("godseye.cv")
 COCO = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"]
 VEHICLE_IDS = {2, 3, 5, 7}
+# Transparent visual occupancy bands; these are frame-space heuristics, not roadway-capacity calibration.
+VEHICLE_OCCUPANCY_BANDS = ((2.0, "LOW"), (5.0, "MODERATE"), (10.0, "HIGH"))
+MOVING_SPEED_DIAGONALS_PER_SECOND = 0.035
+SLOW_SPEED_DIAGONALS_PER_SECOND = 0.008
 
 
 def iou(a: np.ndarray, b: np.ndarray) -> float:
@@ -37,6 +41,29 @@ class Detection:
     label: str
     confidence: float
     track_id: int | None = None
+
+
+def bbox_union_area(detections: list[Detection], width: int, height: int) -> float:
+    """Unique frame area covered by clipped detection boxes (avoids overlap double-counting)."""
+    boxes=[]
+    for detection in detections:
+        x1,y1,x2,y2=detection.bbox
+        x1=max(0.0,min(float(width),x1));x2=max(0.0,min(float(width),x2))
+        y1=max(0.0,min(float(height),y1));y2=max(0.0,min(float(height),y2))
+        if x2>x1 and y2>y1: boxes.append((x1,y1,x2,y2))
+    xs=sorted({x for box in boxes for x in (box[0],box[2])})
+    area=0.0
+    for left,right in zip(xs,xs[1:]):
+        if right<=left: continue
+        intervals=sorted((y1,y2) for x1,y1,x2,y2 in boxes if x1<right and x2>left)
+        covered=0.0;start=end=None
+        for y1,y2 in intervals:
+            if start is None: start,end=y1,y2
+            elif y1<=end: end=max(end,y2)
+            else: covered+=end-start;start,end=y1,y2
+        if start is not None: covered+=end-start
+        area+=(right-left)*covered
+    return area
 
 
 @dataclass
@@ -230,8 +257,28 @@ class CameraState:
                     tr.center_history = hist[-1:]
 
         counts_60 = [x for x in self._last_counts if now - x[0] <= 60]
+        # Frame-space vehicle-box coverage is an observed visual occupancy proxy,
+        # not a calibrated road-capacity or lane-density measurement.
+        vehicle_area=bbox_union_area(vehicles,w,h)
+        vehicle_occupancy_pct=100.0*vehicle_area/max(w*h,1)
+        vehicle_density_level=("LOW" if vehicle_occupancy_pct<2.0 else "MODERATE" if vehicle_occupancy_pct<5.0 else "HIGH" if vehicle_occupancy_pct<10.0 else "VERY_HIGH")
+        # Flow is estimated from recent tracked-vehicle center displacement in
+        # frame diagonals per second. No track history means unknown, not stationary.
+        frame_diagonal=max(float(np.hypot(w,h)),1.0);flow_speeds=[]
+        for detection in vehicles:
+            tr=self.tracker.tracks.get(detection.track_id) if detection.track_id is not None else None
+            recent=[point for point in (tr.center_history if tr else []) if 0.0<=now-point[0]<=1.25]
+            if len(recent)<2: continue
+            elapsed=recent[-1][0]-recent[0][0]
+            if elapsed<0.15: continue
+            displacement=float(np.hypot(recent[-1][1]-recent[0][1],recent[-1][2]-recent[0][2]))
+            flow_speeds.append(displacement/frame_diagonal/elapsed)
+        median_flow_speed=float(np.median(flow_speeds)) if flow_speeds else None
+        traffic_flow=("MOVING" if median_flow_speed is not None and median_flow_speed>=MOVING_SPEED_DIAGONALS_PER_SECOND else "SLOW_MOVING" if median_flow_speed is not None and median_flow_speed>=SLOW_SPEED_DIAGONALS_PER_SECOND else "STATIONARY" if median_flow_speed is not None else None)
         metrics = {"people_count":len(people), "max_people":self.max_people,
                    "vehicle_count":len(vehicles), "crowd_density_per_megapixel":round(density,2),
+                   "vehicle_box_occupancy_pct":round(vehicle_occupancy_pct,3),"traffic_density_level":vehicle_density_level,
+                   "traffic_flow":traffic_flow,"traffic_flow_tracks":len(flow_speeds),
                    "crowd_level":crowd_level, "fps":round(self.fps,1), "inference_ms":round(latency_ms,1),
                    "vehicles_per_minute":len(self._vehicle_entries), "frame_width":w, "frame_height":h}
         return metrics, events

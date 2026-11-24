@@ -50,3 +50,30 @@ def test_stationary_object_cue_is_duration_based():
         _,events=state.analyze(frame,[Detection([60,60,90,90],24,'backpack',.8)],base+float(t),1.0)
         observed.extend(events)
     assert any(e['category']=='STATIONARY_OBJECT' and e['severity']=='WARNING' for e in observed)
+
+
+def test_vehicle_density_uses_clipped_union_of_observed_boxes():
+    from cv_engine import bbox_union_area
+    boxes=[Detection([-5,0,10,10],2,'car',.9),Detection([5,5,15,15],2,'car',.8)]
+    assert bbox_union_area(boxes,20,20)==175
+
+
+def test_traffic_flow_is_unknown_until_real_vehicle_track_history_exists():
+    state=CameraState('traffic');frame=np.zeros((200,200,3),dtype=np.uint8)
+    first,_=state.analyze(frame,[Detection([50,50,150,150],2,'car',.9)],10.0,1)
+    assert first['traffic_density_level']=='VERY_HIGH'
+    assert first['vehicle_box_occupancy_pct']==25.0
+    assert first['traffic_flow'] is None
+    stationary,_=state.analyze(frame,[Detection([50,50,150,150],2,'car',.9)],10.2,1)
+    assert stationary['traffic_flow']=='STATIONARY'
+    assert stationary['traffic_flow_tracks']==1
+
+
+def test_traffic_flow_detects_motion_from_tracked_vehicle_centers():
+    state=CameraState('traffic');frame=np.zeros((200,400,3),dtype=np.uint8)
+    states=[]
+    for t,x in [(20.0,40),(20.2,50),(20.4,60)]:
+        metrics,_=state.analyze(frame,[Detection([x,70,x+45,95],2,'car',.9)],t,1)
+        states.append(metrics['traffic_flow'])
+    assert states[0] is None
+    assert states[-1]=='MOVING'

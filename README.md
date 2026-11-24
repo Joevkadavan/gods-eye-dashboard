@@ -10,7 +10,7 @@
 - Independent async workers for local files, webcam, authorised RTSP sources; shared serialized model session and bounded default camera startup.
 - Alert persistence with event UUID, camera, category, timestamp, confidence, description, severity, verification status and short-lived JPEG evidence; acknowledge/verify/dismiss controls.
 - 10-second metric history with retention cleanup; upload and evidence expiration.
-- Next.js/React/TypeScript dashboard with Overview, Live Monitoring, Incidents, Analytics, Cameras and Settings; Recharts visualisations, camera CRUD, validated settings, reusable restrained icon motion, and responsive source/status cards.
+- Video-first GOD'S EYE dashboard at `/` (the dashboard is also available at `/operations`), with Overview, Live Monitoring, Incidents, Analytics, Cameras and Settings; an Indian traffic-video hero, Recharts visualisations, camera CRUD, validated settings, and responsive source/status cards. The separate Chennai public information page is at `/chennai`, with verified source locations, provider-hosted periodic image views, source-check timestamps, and a clear distinction between source availability and traffic conditions.
 - Lazy-loaded MapLibre India map with a selectable OpenFreeMap/OpenStreetMap vector style, locally bundled geoBoundaries state/UT GeoJSON, OSM-derived building extrusions, city navigation, fullscreen/tilt/rotation, and selectable registered camera markers that open the existing station viewer. Only registry camera coordinates are plotted; source, licensing, usage-limit and boundary caveats are documented in `docs/geospatial-map.md`.
 - FastAPI REST/OpenAPI plus WebSocket updates. Dashboard polls same-origin REST endpoints every 10 seconds (plus a local 1-second clock); WebSocket remains available to API clients.
 - SQLite by default, PostgreSQL through `DATABASE_URL`.
@@ -42,7 +42,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000` (dashboard) and `http://localhost:8000/docs` (interactive API). The dashboard proxies `/api/*` requests through Next.js, so browser code uses relative URLs. Do not add unauthorised CCTV feeds. The India registry currently contains two Chennai still-image views embedded from OpenCCTV (with source credit and verified coordinates). They are labelled `IMAGE REFRESH`, health-checked periodically, and are not continuous video or processed by the YOLO pipeline. No verified continuous Indian public video stream is currently configured. The old bundled international sample cameras are removed from the camera registry at startup; they are never relabelled as Indian/live.
+Open `http://localhost:3000` for the video-first GOD'S EYE dashboard, `http://localhost:3000/chennai` for Chennai source availability, `http://localhost:3000/operations` for the dashboard's direct route, and `http://localhost:8000/docs` for interactive API documentation. The frontend proxies `/api/*` requests through Next.js, so browser code uses relative URLs. Do not add unauthorised CCTV feeds. The India registry currently contains two Chennai still-image views embedded from OpenCCTV (with source credit and verified coordinates). They are labelled `IMAGE REFRESH`, health-checked periodically, and are not continuous video or processed by the YOLO pipeline. No verified continuous Indian public video stream is currently configured. The old bundled international sample cameras are removed from the camera registry at startup; they are never relabelled as Indian/live.
 
 ### Settings and persistence
 
@@ -58,7 +58,7 @@ Open `http://localhost:3000` (dashboard) and `http://localhost:8000/docs` (inter
 
 ## Vercel frontend (deployment pending)
 
-The Next.js frontend is configured for Vercel in `frontend/vercel.json`, but no GOD'S EYE production deployment has been completed. The FastAPI process and periodic health-check workers must run on a persistent backend. Set the production `API_URL` to that reachable backend origin so Next.js rewrites `/api/*` server-side; the local fallback `127.0.0.1:8000` will not work on Vercel. Do not put persistent RTSP/CV workers in serverless functions. This prototype has no authentication/RBAC and must not be exposed as an unrestricted operational public-safety service. The requested `gods-eye-dashboard.vercel.app` host currently serves an unrelated Cyber Chief site; do not overwrite it.
+The Next.js frontend is configured for Vercel in `frontend/vercel.json`. A separate `gods-eye-dashboard` Vercel project now exists with root directory `frontend`, but no source repository or deployment is connected yet. The FastAPI process and periodic health-check workers must run on a persistent backend. Set the production `API_URL` to that reachable backend origin so Next.js rewrites `/api/*` server-side; the local fallback `127.0.0.1:8000` will not work on Vercel. Do not put persistent RTSP/CV workers in serverless functions. This prototype has no authentication/RBAC and must not be exposed as an unrestricted operational public-safety service. The requested `gods-eye-dashboard.vercel.app` host currently serves an unrelated Cyber Chief site; do not overwrite it.
 
 ## Docker (optional)
 

@@ -15,7 +15,7 @@ The India-facing source model is deliberately honest. Two Chennai records are th
 - Node.js 20+ and npm, with the committed `frontend/package-lock.json` for repeatable frontend installation.
 - Python 3.13 in the verified workspace; the backend requirements declare FastAPI, SQLAlchemy, OpenCV, ONNX Runtime, NumPy, Pydantic and supporting packages.
 - TypeScript/TSX, JavaScript modules, CSS, Python and SQLAlchemy models.
-- Git for version control. The delivered workspace had no `.git` directory, remote or earlier commits; no historical development commits have been fabricated.
+- Git for version control. The supplied workspace has an existing local `main` history with two meaningful commits. No remote is configured; preserve both commits and add the authenticated GitHub remote only after confirming the account repository.
 
 ### Project structure
 
@@ -48,7 +48,7 @@ Runtime databases, evidence snapshots, uploads, local environment files, node mo
 
 ## STEP 3 – Frontend Development
 
-`frontend/app/page.tsx` composes a single-page dashboard with Overview, Live Monitoring, Incidents, Analytics, Cameras and System Settings navigation. The top bar, camera station viewer, KPI tiles, event list and source-management panels are React components. Recharts renders actual retained analytics; the UI avoids replacing missing measurements with invented values.
+`frontend/app/page.tsx` redirects to the video-first dashboard, implemented in `frontend/app/operations/page.tsx`; both `/` and `/operations` show the Overview, Live Monitoring, Incidents, Analytics, Cameras and System Settings navigation. The Chennai source-availability information page is maintained separately at `/chennai`. The top bar, camera station viewer, KPI tiles, event list and source-management panels are React components. Recharts renders actual retained analytics; the UI avoids replacing missing measurements with invented values.
 
 `frontend/app/globals.css` defines the dark dashboard surface, cyan/turquoise accents, type hierarchy, responsive breakpoints and restrained transitions. The layout uses flexible grids, wraps map controls, retains mobile bottom navigation and includes reduced-motion handling. The top-left lockup retains the product name and **PUBLIC SAFETY INTELLIGENCE**, with **MADE BY JOE V KADAVAN** beneath it; on tablet and phone the equivalent lockup appears in the top bar. The short first-load intro repeats that lockup at its upper-left so authorship is visible immediately.
 
@@ -66,7 +66,7 @@ The backend inference worker decodes the same prerecorded source independently. 
 
 The default model is YOLOv8n exported to ONNX and executed by ONNX Runtime's CPU provider. OpenCV reads a video/file frame, letterboxes it to the configured input size, runs inference and applies confidence filtering and class-aware non-maximum suppression. COCO class 0 is `person`; selected vehicle classes are 2 (`car`), 3 (`motorcycle`), 5 (`bus`) and 7 (`truck`). Detections carry coordinates, class, confidence and an ephemeral track ID.
 
-A small class-aware IoU tracker associates boxes between nearby frames. Track IDs are temporary and local to a camera worker; they are not personal identities and are not linked across cameras. The analyzer computes people/vehicle counts, maximum observed people count, pixel-normalised density, crowd level, a newly appearing vehicle-track flow proxy, inference latency and rolling FPS. Bounding boxes and confidence scores are returned to the frontend and drawn over video/processed frames.
+A small class-aware IoU tracker associates boxes between nearby frames. Track IDs are temporary and local to a camera worker; they are not personal identities and are not linked across cameras. The analyzer computes people/vehicle counts, maximum observed people count, pixel-normalised people density, crowd level, a newly appearing vehicle-track flow proxy, inference latency and rolling FPS. For the Overview's traffic panel, it also computes the clipped union area of detected vehicle boxes as a frame-occupancy percentage (avoiding overlap double-counting) and assigns transparent LOW / MODERATE / HIGH / VERY_HIGH bands. It estimates movement from recent tracked vehicle-center displacement normalized to frame diagonal and time; without enough observed track history, flow is unknown rather than stationary. These are visual proxies—not calibrated roadway capacity or physical vehicle speed. Bounding boxes and confidence scores are returned to the frontend and drawn over video/processed frames.
 
 The code also has temporal cues for possible falls, prolonged stationary non-person/non-vehicle objects, rapid image-plane motion and sudden crowd increases. These are unvalidated heuristics—not trained action recognition, intent inference or reliable incident classification. Alerts require a human to review them. Chennai image-refresh feeds are excluded from computer vision.
 
@@ -106,15 +106,15 @@ At high city zoom, the optional 3D toggle pitches the map and enables a fill-ext
 
 OpenFreeMap's published public terms, as reviewed for this project, state there is no map-view/request quota or charge for the public instance, permit commercial use and require attribution. The service is provided as-is with no SLA and can change/discontinue. Its offline-download limits (3,000 tiles / 50 MB / four parallel requests per user-started download) do not apply to this app, which has no offline bulk downloader. See `docs/geospatial-map.md` for source and license details.
 
-## STEP 9 – Alerts and Recent Events
+## STEP 9 – Alerts and the Incident Register
 
-The backend creates persisted event records from configured detector cues, camera lifecycle conditions and temporal/count heuristics. Events include an ID, camera, category, timestamp, model-derived confidence where supplied, description, severity, verification state and optional short-lived evidence URL. The event page allows operators to acknowledge, verify or dismiss an event; the overview separately shows alerts requiring review and recent records. Demo startup is treated as demo lifecycle, not a real public-safety alert. Historical events remain subject to configured retention.
+The backend creates persisted event records from configured detector cues, camera lifecycle conditions and temporal/count heuristics. Events include an ID, camera, category, timestamp, model-derived confidence where supplied, description, severity, verification state and optional short-lived evidence URL. The Incidents page allows operators to acknowledge, verify or dismiss events; the Overview retains its actionable alerts-requiring-review list. The former Overview Recent Events panel has been removed as a targeted replacement with traffic-flow intelligence. Demo playback lifecycle is not a real public-safety alert. Historical events remain subject to configured retention.
 
 Severity labels are triage/UI categories, not a calibrated risk probability. Detector confidence is not alert validity. Human verification is required, no emergency service is contacted automatically, and no claim of measured event accuracy is made.
 
 ## STEP 10 – Dashboard Analytics
 
-KPI cards use `/api/overview`, current worker metrics and runtime system information. Recharts activity views and analytics page visualisations use persisted `CameraMetric` history and actual event/category records returned by `/api/analytics`. Sampling and retention determine what history is available; the UI notes those limits. Missing measurements display as unavailable rather than fabricated zeroes. Camera source counts distinguish India registry entries from prerecorded demos; still images do not contribute AI counts.
+KPI cards use `/api/overview`, current worker metrics and runtime system information. Recharts activity views and analytics page visualisations use persisted `CameraMetric` history and actual event/category records returned by `/api/analytics`. The Overview Traffic Flow & Congestion Intelligence component reads selected-camera samples from that same retained history; selectable 5-, 15- and 30-minute trends require at least two actual timestamped samples, with no synthetic points. Historical timestamps are normalized to UTC for consistent browser filtering. Camera comparison is restricted to registered video sources, and source freshness is shown separately from endpoint availability. Insights compare observed samples and current tracked motion only; they do not invent incidents or forecasts. Sampling and retention determine what history is available; the UI notes those limits. Missing measurements display as unavailable rather than fabricated zeroes. Density uses unioned vehicle-box frame coverage (not capacity), and tracked flow uses image-plane displacement (not calibrated speed). Prerecorded feeds are explicitly identified; still images do not contribute AI counts.
 
 ## STEP 11 – Testing and Refinement
 
@@ -129,7 +129,7 @@ For future changes, run `npm ci`, `npm run build`, then `python3 -m pytest -q ba
 
 ## STEP 12 – GitHub Version Control
 
-The requested public URL `https://github.com/Joevkadavan/gods-eye-dashboard` returned HTTP 404 to an unauthenticated GitHub API lookup. That may mean it does not exist or that it is private; a private repository cannot be ruled out without authentication. The workspace has no Git history, remote, GitHub CLI or authenticated GitHub connector, so no remote repository has been created or overwritten and no push is claimed.
+The requested URL `https://github.com/Joevkadavan/gods-eye-dashboard` returned HTTP 404 to an unauthenticated GitHub API lookup. That may mean it does not exist or that it is private; a private repository cannot be ruled out without authentication. The workspace does have a local `main` branch with two existing commits, and those commits must be preserved. No Git remote or GitHub CLI is configured, and the GitHub connector is not available in this session, so no remote repository has been created or overwritten and no push is claimed. An authenticated GitHub connection is required before verifying a private repository, creating it if absent, or pushing source.
 
 After authenticating GitHub with an approved mechanism, first verify the repository in the account. The GitHub web interface can create a public repository at `https://github.com/new` with the name `gods-eye-dashboard`. If GitHub CLI is installed and authenticated, check first with `gh repo view Joevkadavan/gods-eye-dashboard`. If absent, an empty repository can be created and published with `gh repo create Joevkadavan/gods-eye-dashboard --public --source . --remote origin --push` after the local source has a real commit. If present, clone/fetch it first and preserve its history. Then, from the project root:
 
@@ -148,7 +148,7 @@ If a remote already has commits, clone that remote and copy the final source int
 
 ## STEP 13 – Vercel Deployment
 
-No GOD'S EYE production project or deployment is connected yet. The Vercel account currently lists only `bealwaysjoe`, whose public page is a different creator-services site. The preferred `https://gods-eye-dashboard.vercel.app` currently serves an unrelated “God's Eye | Cyber Chief” app; it is not available for this project. Do not overwrite either deployment. `https://godseye-dashboard-joevkadavan.vercel.app` is a suitable candidate; an unauthenticated request currently returns Vercel `DEPLOYMENT_NOT_FOUND`, which is not a reservation guarantee. Vercel must confirm/assign it when the new project is created.
+A new Vercel project named `gods-eye-dashboard` has been created in the connected account with Next.js, `frontend` as its root directory, `npm ci` as its install command and `npm run build` as its build command. It is still unconnected to source and has no deployment. The existing `bealwaysjoe` project is unrelated and must remain untouched. The preferred `https://gods-eye-dashboard.vercel.app` currently serves an unrelated “God's Eye | Cyber Chief” app; do not overwrite it. `https://godseye-dashboard-joevkadavan.vercel.app` returned Vercel `DEPLOYMENT_NOT_FOUND` when checked but is not reserved. The new project's account-level SSO protection is enabled, so public deployment access and domain assignment must be verified/configured before claiming a public launch.
 
 Once the repository and persistent API host are authorized:
 
