@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: gods-eye-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: DB_POOL_SIZE
+        value: "1"
+      - key: ENABLE_VIDEO_ANALYTICS
+        value: "false"
+      - key: ENABLE_LOCAL_UPLOADS
+        value: "false"
+      - key: STORE_LOCAL_EVIDENCE
+        value: "false"
+      - key: STARTUP_CAMERAS
+        value: "0"
+      - key: ORT_THREADS
+        value: "1"
+      - key: RETENTION_HOURS
+        value: "720"

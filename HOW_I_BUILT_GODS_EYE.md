@@ -120,16 +120,16 @@ KPI cards use `/api/overview`, current worker metrics and runtime system informa
 
 The project includes pytest tests for inference/tracking behavior, camera lifecycle and API functions, event history, map GeoJSON integrity and video route restrictions. For this delivery pass:
 
-- `cd frontend && npm run build` completed successfully on the final source state.
-- `python3 -m pytest -q backend/tests` passed **18 tests**.
-- Local runtime smoke checks returned HTTP 200 for the dashboard, same-origin API and 36-feature GeoJSON. The Chennai coordinates and stored `last_image_at` values were read from the running API. A 1,024-byte `Range` GET through the local Next.js proxy returned HTTP 206 as expected for seeking MP4 playback (verified in the preceding video-hero pass).
-- The map and dashboard were not tested against the connected user's live Vercel production because the only connected Vercel project is unrelated. A graphical browser automation runtime was not present for measured desktop/mobile visual checks; responsive styles and production build were tested, but visual viewport/overflow verification remains outstanding.
+- `cd frontend && npm run build` completed successfully on the current source state.
+- `cd backend && pytest -q` passed **29 tests**, including Render/Supabase URL configuration and empty-inference safeguards.
+- A production-build Chromium smoke test visited `/`, `/operations`, and `/chennai`; all returned successfully with no page errors or hydration console errors. At 390 px, both dashboard and Chennai pages had no horizontal overflow. The dashboard video element loaded, the Chennai page rendered two source cards, and the production API smoke returned HTTP 200 for `/health`, `/api/overview`, and `/api/india-feeds` in local configuration.
+- No Render/Supabase production service is connected yet; the app was not tested against a live hosted database.
 
 For future changes, run `npm ci`, `npm run build`, then `python3 -m pytest -q backend/tests`. Smoke-test `/`, `/api/overview`, `/data/india_admin1.geojson` and the map-style/MP4 requests from a browser with an approved backend URL.
 
 ## STEP 12 – GitHub Version Control
 
-The requested URL `https://github.com/Joevkadavan/gods-eye-dashboard` returned HTTP 404 to an unauthenticated GitHub API lookup. That may mean it does not exist or that it is private; a private repository cannot be ruled out without authentication. The workspace does have a local `main` branch with two existing commits, and those commits must be preserved. No Git remote or GitHub CLI is configured, and the GitHub connector is not available in this session, so no remote repository has been created or overwritten and no push is claimed. An authenticated GitHub connection is required before verifying a private repository, creating it if absent, or pushing source.
+The requested URL `https://github.com/Joevkadavan/gods-eye-dashboard` returned HTTP 404 to an unauthenticated GitHub API lookup. That may mean it does not exist or that it is private; a private repository cannot be ruled out without authentication. The workspace has a local `main` branch with four truthful commits, including the original two commits and the latest dashboard/launch updates; these commits must be preserved. No Git remote or GitHub CLI is configured, and the GitHub connector is not available in this session, so no remote repository has been created or overwritten and no push is claimed. An authenticated GitHub connection is required before verifying a private repository, creating it if absent, or pushing source.
 
 After authenticating GitHub with an approved mechanism, first verify the repository in the account. The GitHub web interface can create a public repository at `https://github.com/new` with the name `gods-eye-dashboard`. If GitHub CLI is installed and authenticated, check first with `gh repo view Joevkadavan/gods-eye-dashboard`. If absent, an empty repository can be created and published with `gh repo create Joevkadavan/gods-eye-dashboard --public --source . --remote origin --push` after the local source has a real commit. If present, clone/fetch it first and preserve its history. Then, from the project root:
 
@@ -160,6 +160,14 @@ Once the repository and persistent API host are authorized:
 6. Add a project domain only after Vercel confirms it is available. Record the actual live URL in `PROJECT_OVERVIEW.md` and here after it is verified.
 
 Vercel production URL: **pending**. The public site requires the external FastAPI backend to be available; the Next.js deployment alone cannot run persistent OpenCV/ONNX camera workers.
+
+### Free FastAPI host and database configuration
+
+The repository-root `render.yaml` defines a Render **Free** Python web service with `rootDir: backend`, `pip install -r requirements.txt`, `uvicorn main:app --host 0.0.0.0 --port $PORT`, and `/health`. The real FastAPI entry point is `backend/main.py` (`main:app` when Render's root is `backend`). Render also needs `DATABASE_URL` and `FRONTEND_ORIGINS` entered as environment variables at Blueprint creation; the YAML contains only `sync: false` placeholders.
+
+Create a Supabase Free PostgreSQL project and copy the dashboard's **Session pooler** URI (port 5432; use TLS with `sslmode=require`). Store the full URL only in Render's secret environment variable `DATABASE_URL`; the app normalizes `postgresql://` to SQLAlchemy's installed psycopg v3 driver. Production mode rejects SQLite and will not silently fall back to an ephemeral DB. `FRONTEND_ORIGINS` must list the exact HTTPS Vercel origin, comma-separated if needed; production rejects wildcard or local-only CORS. After Render assigns an `https://<service>.onrender.com` URL, set Vercel's server-side `API_URL` to that exact origin.
+
+For the Render Free profile, `ENABLE_VIDEO_ANALYTICS=false`, `STARTUP_CAMERAS=0`, local uploads off and local evidence-image writes off. This keeps the full local OpenCV/YOLO implementation intact but does **not** promise continuous inference on the free service; the web service is small (0.1 CPU/512 MB), may sleep after inactivity, and has ephemeral local disk. Fresh people/vehicle/FPS values remain unavailable unless actual inference is enabled and returns current frames. Supabase stores relational camera/event/metric rows; app retention is configured to 30 days. Evidence files and uploaded video files are not retained on the free service. Supabase Free projects may pause during low database activity. No Render service or Supabase project has been created in this session: Arena reports Render unsupported and Supabase disconnected, and no GitHub repo access is available to connect the Blueprint.
 
 ## STEP 14 – Running the Project Locally
 

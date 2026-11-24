@@ -28,6 +28,14 @@ INFER_SIZE=int(os.getenv("INFER_SIZE","416")); CONF=float(os.getenv("DETECTION_C
 RETENTION_HOURS=int(os.getenv("RETENTION_HOURS","24")); MAX_CAMERAS=int(os.getenv("MAX_CAMERAS","6"))
 CROWD_WARNING_COUNT=int(os.getenv("CROWD_WARNING_COUNT","15")); STATIONARY_SECONDS=int(os.getenv("STATIONARY_SECONDS","15"))
 SETTINGS_FILE=DATA/"settings.json"
+APP_ENV=os.getenv("APP_ENV","development").lower()
+IS_PRODUCTION=APP_ENV in {"production","prod"} or bool(os.getenv("RENDER"))
+def env_flag(name:str,default:bool)->bool:
+    raw=os.getenv(name)
+    return default if raw is None else raw.strip().lower() in {"1","true","yes","on"}
+VIDEO_ANALYTICS_ENABLED=env_flag("ENABLE_VIDEO_ANALYTICS",True)
+LOCAL_UPLOADS_ENABLED=env_flag("ENABLE_LOCAL_UPLOADS",True)
+LOCAL_EVIDENCE_ENABLED=env_flag("STORE_LOCAL_EVIDENCE",True)
 RUNTIME_SETTINGS={"inference_size":INFER_SIZE,"confidence_threshold":CONF,"retention_hours":RETENTION_HOURS,"max_cameras":MAX_CAMERAS,"crowd_warning_count":CROWD_WARNING_COUNT,"stationary_seconds":STATIONARY_SECONDS,"model":MODEL.name}
 INDIAN_DEMO_ID="indian-urban-traffic-demo"
 INDIAN_DEMO_FILE=MEDIA/"indian-urban-traffic-pexels-5009674.mp4"
@@ -76,6 +84,13 @@ def serialize_camera(c:Camera)->dict[str,Any]:
         "refresh_seconds":c.refresh_seconds,"last_checked_at":iso_utc(c.last_checked_at),
         "last_image_at":iso_utc(c.last_image_at),"health_message":c.health_message}
 def serialize_event(e:Event)->dict[str,Any]: return {"id":e.id,"camera_id":e.camera_id,"category":e.category,"timestamp":e.timestamp.isoformat(),"confidence":e.confidence,"description":e.description,"severity":e.severity,"verification_status":e.verification_status,"evidence_url":f"/api/evidence/{Path(e.evidence_path).name}" if e.evidence_path else None}
+
+def save_evidence(eid:str,frame:np.ndarray)->str|None:
+    """Save local evidence only in local/dev mode; Render's disk is ephemeral."""
+    if not LOCAL_EVIDENCE_ENABLED:
+        return None
+    path=EVIDENCE/f"{eid}.jpg"
+    return str(path) if cv2.imwrite(str(path),frame,[cv2.IMWRITE_JPEG_QUALITY,82]) else None
 
 async def read_frame(cap:cv2.VideoCapture):
     return await asyncio.to_thread(cap.read)
@@ -159,9 +174,8 @@ async def camera_worker(camera_id:str):
                 # Demo playback is a source lifecycle transition, not a safety incident.
                 # Keep informational camera-online events for authorized non-demo streams.
                 if source_type!="file":
-                    eid=str(uuid.uuid4()); evidence=EVIDENCE/f"{eid}.jpg"
-                    cv2.imwrite(str(evidence),overlay,[cv2.IMWRITE_JPEG_QUALITY,82])
-                    info=Event(id=eid,camera_id=camera_id,category="CAMERA_ONLINE",confidence=1.0,description="Authorised camera source is online and processing; operator acknowledgement required.",severity="INFORMATIONAL",verification_status="PENDING",evidence_path=str(evidence))
+                    eid=str(uuid.uuid4()); evidence_path=save_evidence(eid,overlay)
+                    info=Event(id=eid,camera_id=camera_id,category="CAMERA_ONLINE",confidence=1.0,description="Authorised camera source is online and processing; operator acknowledgement required.",severity="INFORMATIONAL",verification_status="PENDING",evidence_path=evidence_path)
                     odb=SessionLocal(); odb.add(info); odb.commit(); odb.refresh(info); info_json=serialize_event(info); odb.close()
                     await hub.send({"type":"new_event","event":info_json})
                 announced_online=True
@@ -176,9 +190,8 @@ async def camera_worker(camera_id:str):
             for ev in events:
                 if now-last_event.get(ev["category"],0)<10: continue
                 last_event[ev["category"]]=now
-                eid=str(uuid.uuid4()); evidence=EVIDENCE/f"{eid}.jpg"
-                cv2.imwrite(str(evidence),overlay,[cv2.IMWRITE_JPEG_QUALITY,82])
-                item=Event(id=eid,camera_id=camera_id,category=ev["category"],confidence=float(ev["confidence"]),description=ev["description"],severity=ev["severity"],verification_status="PENDING",evidence_path=str(evidence))
+                eid=str(uuid.uuid4()); evidence_path=save_evidence(eid,overlay)
+                item=Event(id=eid,camera_id=camera_id,category=ev["category"],confidence=float(ev["confidence"]),description=ev["description"],severity=ev["severity"],verification_status="PENDING",evidence_path=evidence_path)
                 db=SessionLocal()
                 if db.get(Camera,camera_id): db.add(item); db.commit(); db.refresh(item); event_json=serialize_event(item)
                 else: event_json=None
@@ -213,6 +226,8 @@ async def camera_supervisor(camera_id:str):
         delay=min(delay*2,30)
 
 async def launch_camera(camera_id:str):
+    if not VIDEO_ANALYTICS_ENABLED:
+        return
     if camera_id in tasks and not tasks[camera_id].done(): return
     tasks[camera_id]=asyncio.create_task(camera_supervisor(camera_id),name=f"camera:{camera_id}")
 
@@ -303,7 +318,7 @@ async def lifespan(app:FastAPI):
     global detector, MODEL, INFER_SIZE, CONF, RETENTION_HOURS, MAX_CAMERAS, CROWD_WARNING_COUNT, STATIONARY_SECONDS, RUNTIME_SETTINGS
     Base.metadata.create_all(engine)
     migrate_camera_columns()
-    if SETTINGS_FILE.exists():
+    if not IS_PRODUCTION and SETTINGS_FILE.exists():
         try:
             saved=json.loads(SETTINGS_FILE.read_text())
             if saved.get("inference_size") in {320,352,384,416,448,480,512,544,576,608,640} and saved.get("model") in {"yolov8n.onnx","yolov8n.int8.onnx"}:
@@ -312,8 +327,12 @@ async def lifespan(app:FastAPI):
                 CROWD_WARNING_COUNT=int(saved["crowd_warning_count"]); STATIONARY_SECONDS=int(saved["stationary_seconds"]); MODEL=Path(__file__).parent/"models"/saved["model"]
                 RUNTIME_SETTINGS={**RUNTIME_SETTINGS,**saved}
         except (ValueError,KeyError,TypeError): log.exception("invalid persisted settings; using environment defaults")
-    if not MODEL.exists(): raise RuntimeError(f"Model file not found: {MODEL}")
-    detector=YoloDetector(MODEL,INFER_SIZE,CONF,threads=int(os.getenv("ORT_THREADS","2")))
+    if VIDEO_ANALYTICS_ENABLED:
+        if not MODEL.exists(): raise RuntimeError(f"Model file not found: {MODEL}")
+        detector=YoloDetector(MODEL,INFER_SIZE,CONF,threads=int(os.getenv("ORT_THREADS","2")))
+    else:
+        detector=None
+        log.warning("Video inference disabled by ENABLE_VIDEO_ANALYTICS; API serves persisted records only.")
     prune_retained_data()
     retention_task=asyncio.create_task(retention_worker(),name="retention-cleanup")
     db=SessionLocal()
@@ -370,7 +389,25 @@ async def lifespan(app:FastAPI):
     await asyncio.gather(retention_task,*tasks.values(),return_exceptions=True)
 
 app=FastAPI(title="GOD'S EYE API",version="0.1.0",description="Privacy-conscious, human-verified public-space video analytics prototype.",lifespan=lifespan)
-app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_methods=["*"],allow_headers=["*"])
+def parse_frontend_origins(raw:str|None=None)->list[str]:
+    value=raw if raw is not None else os.getenv("FRONTEND_ORIGINS","http://localhost:3000,http://127.0.0.1:3000")
+    return [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
+
+FRONTEND_ORIGINS=parse_frontend_origins()
+if IS_PRODUCTION and (not FRONTEND_ORIGINS or "*" in FRONTEND_ORIGINS or all(origin.startswith(("http://localhost","http://127.0.0.1")) for origin in FRONTEND_ORIGINS)):
+    raise RuntimeError("Set FRONTEND_ORIGINS to the exact HTTPS Vercel production origin(s); wildcard and local-only CORS are forbidden in production.")
+app.add_middleware(CORSMiddleware,allow_origins=FRONTEND_ORIGINS,allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","X-Requested-With"])
+
+@app.get("/health")
+def render_health():
+    """Render liveness/readiness probe; also verifies the configured durable DB."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception as exc:
+        log.exception("database health check failed")
+        raise HTTPException(status_code=503,detail="Database unavailable") from exc
+    return {"status":"ok","database":"postgresql" if engine.dialect.name=="postgresql" else engine.dialect.name,"video_analytics":"enabled" if VIDEO_ANALYTICS_ENABLED else "disabled"}
 
 @app.get("/api/health")
 def health():
@@ -384,7 +421,7 @@ def health():
     enabled_video_ids=set(db.scalars(select(Camera.id).where(Camera.enabled==True,Camera.feed_kind!="image_refresh")))
     db.close()
     processing_ids=sorted(enabled_video_ids.intersection(fresh))
-    return {"status":"ok","model":MODEL.name,"model_version":metadata.get("version"),"model_architecture":metadata.get("description"),"model_metadata_date":metadata.get("date"),"model_status":"LOADED" if detector else "ERROR","inference_status":"PROCESSING" if processing_ids else "WAITING","processing_cameras":processing_ids,"active_video_workers":sum(cid in tasks and not tasks[cid].done() for cid in enabled_video_ids),"input_resolution":INFER_SIZE,"runtime":"onnxruntime","active_workers":sum(not t.done() for t in tasks.values()),"providers":providers,"device":device,"cpu_provider":"CPUExecutionProvider" if "CPUExecutionProvider" in providers else None,"cpu_utilization_percent":psutil.cpu_percent(interval=None),"process_memory_mb":round(proc.memory_info().rss/1024**2,1),"system_memory_percent":vm.percent,"gpu_utilization_percent":None}
+    return {"status":"ok","model":MODEL.name,"model_version":metadata.get("version"),"model_architecture":metadata.get("description"),"model_metadata_date":metadata.get("date"),"model_status":"DISABLED" if not VIDEO_ANALYTICS_ENABLED else "LOADED" if detector else "ERROR","inference_status":"DISABLED" if not VIDEO_ANALYTICS_ENABLED else "PROCESSING" if processing_ids else "WAITING","processing_cameras":processing_ids,"active_video_workers":sum(cid in tasks and not tasks[cid].done() for cid in enabled_video_ids),"input_resolution":INFER_SIZE,"runtime":"onnxruntime","active_workers":sum(not t.done() for t in tasks.values()),"providers":providers,"device":device,"cpu_provider":"CPUExecutionProvider" if "CPUExecutionProvider" in providers else None,"cpu_utilization_percent":psutil.cpu_percent(interval=None),"process_memory_mb":round(proc.memory_info().rss/1024**2,1),"system_memory_percent":vm.percent,"gpu_utilization_percent":None}
 
 def is_review_alert(event:Any)->bool:
     """Pending, actionable safety cue; source lifecycle and demo events are not alerts."""
@@ -408,7 +445,7 @@ def overview():
     sys_metrics={"cpu_utilization_percent":psutil.cpu_percent(interval=None),"process_memory_mb":round(proc.memory_info().rss/1024**2,1),"system_memory_percent":vm.percent,"gpu_utilization_percent":None}
     video_cams=[c for c in cams if c.feed_kind!="image_refresh"]
     image_cams=[c for c in cams if c.feed_kind=="image_refresh"]
-    return {"active_cameras":sum(c.status=="online" and c.enabled for c in video_cams),"total_cameras":len(video_cams),"available_image_sources":sum(c.status=="online" and c.enabled for c in image_cams),"total_image_sources":len(image_cams),"people_detected":sum(x.get("people_count",0) for x in ms),"vehicles_detected":sum(x.get("vehicle_count",0) for x in ms),"crowd_level":max((x.get("crowd_level","LOW") for x in ms),key=lambda x:{"LOW":0,"MODERATE":1,"HIGH":2}[x],default="LOW"),"active_alerts":pending_alerts,"fps":round(sum(x.get("fps",0) for x in ms),1),"system_metrics":sys_metrics,"system_health":"NOMINAL","cameras":[serialize_camera(c) for c in cams],"recent_events":[serialize_event(e) for e in events]}
+    return {"active_cameras":sum(c.status=="online" and c.enabled for c in video_cams),"total_cameras":len(video_cams),"available_image_sources":sum(c.status=="online" and c.enabled for c in image_cams),"total_image_sources":len(image_cams),"people_detected":sum(x.get("people_count",0) for x in ms) if ms else None,"vehicles_detected":sum(x.get("vehicle_count",0) for x in ms) if ms else None,"crowd_level":max((x.get("crowd_level","LOW") for x in ms),key=lambda x:{"LOW":0,"MODERATE":1,"HIGH":2}[x]) if ms else None,"active_alerts":pending_alerts,"fps":round(sum(x.get("fps",0) for x in ms),1) if ms else None,"system_metrics":sys_metrics,"system_health":"NOMINAL","cameras":[serialize_camera(c) for c in cams],"recent_events":[serialize_event(e) for e in events]}
 
 @app.get("/api/cameras")
 def list_cameras():
@@ -420,6 +457,8 @@ def india_feeds():
 
 @app.post("/api/cameras")
 async def add_camera(body:CameraIn):
+    if not VIDEO_ANALYTICS_ENABLED:
+        raise HTTPException(503,"Video ingestion is disabled on this free-tier deployment; no inference metrics are being generated.")
     if body.source_type not in {"file","webcam","rtsp"}: raise HTTPException(400,"source_type must be file, webcam or rtsp; verified image-refresh sources are managed by the registry")
     if body.source_type=="file":
         p=Path(body.source).expanduser().resolve()
@@ -441,6 +480,8 @@ async def add_camera(body:CameraIn):
 
 @app.post("/api/cameras/upload")
 async def upload_video(file:UploadFile=File(...),name:str="Uploaded video"):
+    if not LOCAL_UPLOADS_ENABLED or not VIDEO_ANALYTICS_ENABLED:
+        raise HTTPException(503,"Local video uploads are disabled on this free-tier deployment because instance storage is ephemeral.")
     if Path(file.filename or "").suffix.lower() not in {".mp4",".avi",".mov",".mkv"}: raise HTTPException(400,"Supported video formats: mp4, avi, mov, mkv")
     target=UPLOADS/f"{uuid.uuid4()}{Path(file.filename).suffix.lower()}"
     with target.open("wb") as f: shutil.copyfileobj(file.file,f)
@@ -583,6 +624,10 @@ def settings(): return {**RUNTIME_SETTINGS,"model":MODEL.name,"privacy":"No face
 
 @app.put("/api/settings")
 async def update_settings(body:SettingsIn):
+    if IS_PRODUCTION:
+        raise HTTPException(503,"Production configuration is environment-managed; local settings files are not persisted. Update Render environment variables and redeploy.")
+    if not VIDEO_ANALYTICS_ENABLED:
+        raise HTTPException(503,"Video inference settings are unavailable while video analytics is disabled.")
     global INFER_SIZE, CONF, RETENTION_HOURS, MAX_CAMERAS, CROWD_WARNING_COUNT, STATIONARY_SECONDS, MODEL, detector, RUNTIME_SETTINGS
     if body.inference_size % 32: raise HTTPException(400,"inference_size must be divisible by 32")
     candidate=Path(__file__).parent/"models"/body.model

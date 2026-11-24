@@ -23,7 +23,7 @@ Counts and event cues are model outputs and prototype heuristics, not ground-tru
 
 ## D. Technology and Innovation
 
-The frontend is Next.js 15 with React 19, TypeScript, MapLibre GL JS and Recharts. A Python FastAPI backend exposes the REST and WebSocket APIs and runs OpenCV video workers. YOLOv8n exported to ONNX Runtime performs CPU inference; a small IoU tracker creates temporary, camera-local IDs. SQLAlchemy uses SQLite by default and can be configured for PostgreSQL. OpenFreeMap serves OpenStreetMap/OpenMapTiles-derived vector styles without a Google Maps API. Vercel is the intended host for the Next.js frontend; a separately hosted, reachable FastAPI backend is required for registry and analytics data.
+The frontend is Next.js 15 with React 19, TypeScript, MapLibre GL JS and Recharts. A Python FastAPI backend exposes the REST and WebSocket APIs and runs OpenCV video workers. YOLOv8n exported to ONNX Runtime performs CPU inference; a small IoU tracker creates temporary, camera-local IDs. SQLAlchemy uses SQLite for local development and is configured to require PostgreSQL in production; the Render blueprint accepts the Supabase connection URL through a secret environment variable. OpenFreeMap serves OpenStreetMap/OpenMapTiles-derived vector styles without a Google Maps API. Vercel is the intended host for the Next.js frontend; a separately hosted, reachable FastAPI backend is required for registry and analytics data.
 
 ## E. Public Accessibility
 

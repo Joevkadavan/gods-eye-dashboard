@@ -5,9 +5,32 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///../data/godseye.db")
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+def resolve_database_url(configured: str | None, *, app_env: str | None = None, is_render: bool | None = None) -> str:
+    """Normalize SQLAlchemy's psycopg v3 URL and forbid ephemeral production DBs."""
+    environment = (app_env if app_env is not None else os.getenv("APP_ENV", "development")).lower()
+    render = bool(os.getenv("RENDER")) if is_render is None else is_render
+    production = environment in {"production", "prod"} or render
+    url = (configured or "sqlite:///../data/godseye.db").strip()
+    if production and url.lower().startswith("sqlite"):
+        raise RuntimeError("Production requires a persistent PostgreSQL DATABASE_URL; SQLite on Render is ephemeral and is disabled.")
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    if production and url.startswith("postgresql+psycopg://") and "sslmode=" not in url:
+        url += "&sslmode=require" if "?" in url else "?sslmode=require"
+    return url
+
+
+DATABASE_URL = resolve_database_url(os.getenv("DATABASE_URL"))
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+connect_args = {"check_same_thread": False} if _is_sqlite else {}
+engine_options = {"connect_args": connect_args, "pool_pre_ping": True}
+if not _is_sqlite:
+    # A free Render web service runs one instance; keep the Supabase session
+    # pooler footprint small and avoid creating overflow connections.
+    engine_options.update(pool_size=max(1, int(os.getenv("DB_POOL_SIZE", "2"))), max_overflow=0)
+engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 class Base(DeclarativeBase): pass
